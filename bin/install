@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+# Modelled on CruGlobal/asdf-cru-cli, which is in turn modelled on
+# https://github.com/hypnoglow/asdf-golangci-lint/blob/master/bin/install
+#
+# CruGlobal/ccrotate is private, so release assets cannot be fetched with a
+# plain download URL. `gh release download` uses the developer's existing gh
+# credentials, which avoids asking everyone for a personal access token.
+
+set \
+  -o nounset \
+  -o pipefail \
+  -o errexit
+
+app_package="ccrotate"
+app_name="ccrotate"
+app_repo="CruGlobal/ccrotate"
+
+install_ccrotate() {
+  local -r install_type=$1
+  local -r version=$2
+  local -r install_path=$3
+
+  local -r bin_install_path="${install_path}/bin"
+
+  check_platform
+  check_gh
+
+  local tmp_download_dir
+  if [[ -n "${TMPDIR:-}" ]]; then
+    tmp_download_dir=${TMPDIR}
+  else
+    tmp_download_dir=$(mktemp -d -t ${app_package}_XXXXXX)
+  fi
+
+  local -r platform="$(get_platform)"
+  local -r filename="$(get_filename $version $platform)"
+  local -r download_path="${tmp_download_dir}/${filename}"
+
+  echo "Downloading ${filename} from ${app_repo}"
+  gh release download "v${version}" --repo "${app_repo}" --output "${download_path}" --pattern "${filename}" --clobber
+
+  echo "Cleaning previous install"
+  rm -rf ${bin_install_path} 2>/dev/null || true
+
+  echo "Creating bin directory"
+  mkdir -p "${bin_install_path}"
+
+  echo "Copying binary"
+  tar xzf ${download_path} --directory ${tmp_download_dir}
+  cp ${tmp_download_dir}/${app_name} ${bin_install_path}
+  chmod -R +x ${bin_install_path}
+
+  echo "Cleaning up downloads"
+  rm -f "${download_path}"
+
+  cat <<'NOTE'
+
+ccrotate is installed. Next:
+
+  ccrotate init
+  ccrotate account add <name> --email <you@cru.org>   # once per seat
+  ccrotate doctor
+  ccrotate install
+
+If you are upgrading an existing install, re-run `ccrotate install`. The
+LaunchAgent records an absolute path to the binary, and asdf installs each
+version to its own directory, so the daemon otherwise keeps running the old
+one. `ccrotate doctor` warns when that has happened.
+NOTE
+}
+
+# ccrotate shells out to security(1) and launchctl(1); there are no builds for
+# any other platform.
+check_platform() {
+  if [[ "$(get_platform)" != "darwin" ]]; then
+    echo "ccrotate is macOS only (it uses the macOS Keychain and launchd)." >&2
+    echo "Detected platform: $(get_platform)" >&2
+    exit 1
+  fi
+}
+
+check_gh() {
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "The GitHub CLI (gh) is required: ${app_repo} is private, so its release" >&2
+    echo "assets cannot be downloaded anonymously." >&2
+    echo "  brew install gh && gh auth login" >&2
+    exit 1
+  fi
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "gh is installed but not authenticated. Run:" >&2
+    echo "  gh auth login" >&2
+    exit 1
+  fi
+}
+
+get_platform() {
+  uname | tr '[:upper:]' '[:lower:]'
+}
+
+get_arch () {
+  local arch=""
+
+  case "$(uname -m)" in
+      x86_64|amd64) arch="amd64"; ;;
+      aarch64|arm64) arch="arm64"; ;;
+      *)
+        echo "Arch '$(uname -m)' not supported!" >&2
+        exit 1
+        ;;
+  esac
+
+  echo -n $arch
+}
+
+get_filename() {
+  local -r version="$1"
+  local -r platform="$2"
+  local -r arch="$(get_arch)"
+
+  echo "${app_package}-v${version}-${platform}-${arch}.tar.gz"
+}
+
+install_ccrotate $ASDF_INSTALL_TYPE $ASDF_INSTALL_VERSION $ASDF_INSTALL_PATH
