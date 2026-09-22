@@ -64,18 +64,21 @@ ccrotate is installed. Next:
   ccrotate install
 
 If you are upgrading an existing install, re-run `ccrotate install`. The
-LaunchAgent records an absolute path to the binary, and asdf installs each
+service that runs the daemon records an absolute path to the binary (a
+LaunchAgent on macOS, a systemd user service on Linux), and asdf installs each
 version to its own directory, so the daemon otherwise keeps running the old
 one. `ccrotate doctor` warns when that has happened.
 NOTE
 }
 
-# ccrotate shells out to security(1) and launchctl(1); there are no builds for
-# any other platform.
+# ccrotate ships prebuilt binaries for macOS and Linux only; there are no
+# release assets for any other platform.
 check_platform() {
-  if [[ "$(get_platform)" != "darwin" ]]; then
-    echo "ccrotate is macOS only (it uses the macOS Keychain and launchd)." >&2
-    echo "Detected platform: $(get_platform)" >&2
+  local -r platform="$(get_platform)"
+
+  if [[ "${platform}" != "darwin" && "${platform}" != "linux" ]]; then
+    echo "ccrotate supports macOS (darwin) and Linux only." >&2
+    echo "Detected platform: ${platform}" >&2
     exit 1
   fi
 }

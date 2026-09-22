@@ -5,7 +5,9 @@ rotates between Claude Enterprise seats before any one of them exhausts its
 five-hour usage window, so running Claude Code sessions and their sub-agents
 never hit a rate limit.
 
-macOS only. ccrotate uses the macOS Keychain and launchd.
+Supports macOS and Linux. On macOS ccrotate keeps credentials in the Keychain
+and runs its daemon under launchd. On Linux it keeps them in the libsecret
+Secret Service and runs its daemon as a systemd user service.
 
 ## Install
 
@@ -22,6 +24,10 @@ The [GitHub CLI](https://cli.github.com), authenticated:
 ```sh
 brew install gh && gh auth login
 ```
+
+On Linux, `libsecret` (the `secret-tool` command) is recommended so credentials
+land in your desktop keyring. Without a reachable Secret Service, ccrotate falls
+back to `0600` files under `~/.local/state/ccrotate/secrets`.
 
 `CruGlobal/ccrotate` is private, so its release assets cannot be downloaded
 anonymously. This plugin shells out to `gh release download`, which reuses the
@@ -43,21 +49,25 @@ ccrotate doctor
 ccrotate install
 ```
 
-`ccrotate install` loads a LaunchAgent and points Claude Code at the local proxy
-by setting `ANTHROPIC_BASE_URL` in `~/.claude/settings.json` (backed up first).
+`ccrotate install` loads the daemon as a service (a LaunchAgent on macOS, a
+systemd user service on Linux) and points Claude Code at the local proxy by
+setting `ANTHROPIC_BASE_URL` in `~/.claude/settings.json` (backed up first).
 Restart any running `claude` sessions afterwards. Remote Control and `/schedule`
 are disabled while traffic goes through the proxy. `ccrotate uninstall` reverses
 both changes.
+
+On Linux you can check the daemon with `systemctl --user status ccrotate.service`,
+and its logs live in `~/.local/state/ccrotate/logs/`.
 
 ## Upgrading
 
 ```sh
 asdf install ccrotate <version>
 asdf set -u ccrotate <version>
-ccrotate install      # re-point the LaunchAgent
+ccrotate install      # re-point the service at the new binary
 ```
 
-That last step is not optional. The LaunchAgent records an absolute path to the
+That last step is not optional. The service records an absolute path to the
 binary, and asdf installs each version to its own directory, so the daemon keeps
 running the previous release — which still exists, so nothing errors.
 `ccrotate doctor` warns when the agent and your `PATH` disagree.
